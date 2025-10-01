@@ -1,0 +1,21 @@
+# KB Conduit .gitignore
+
+# Logs directory (user-specific session logs)
+logs/
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# User-specific context files (not part of repo)
+.kb-context/
+
+# Backup files
+*.bak
+*.backup

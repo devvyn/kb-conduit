@@ -1,0 +1,27 @@
+# KB Context Template
+# Place this file at PROJECT_ROOT/.kb-context/context.yaml
+
+workspace: "Workspace Name"
+
+contexts:
+  - context_area_1
+  - context_area_2
+  - context_area_3
+
+people:
+  - me: "Your Name"
+  - collaborator: "Name and Role"
+
+policies:
+  - "Policy or guideline 1"
+  - "Policy or guideline 2"
+
+clues:
+  # Keywords that trigger loading this context
+  - "keyword1"
+  - "keyword2"
+  - "keyword3"
+
+notes: |
+  Optional notes about this workspace context.
+  What's special about working here?
