@@ -1,0 +1,112 @@
+# Simple Agent Stack Example
+# Two-layer stack: Base context + Interactive loader
+
+schema_version: "1.0"
+
+stack:
+  name: "kb-conduit-basic-stack"
+  version: "0.1.0"
+  description: "Basic two-layer agent stack with marimo context loader"
+
+  global:
+    base_path: "/home/user/kb-conduit"
+    environment:
+      KB_CONDUIT_ROOT: "~/.kb-conduit"
+      LOG_LEVEL: "info"
+    runtime: "python3.11"
+
+  agents:
+    # Layer 0: Base infrastructure (existing kb-conduit)
+    - name: "kb_base"
+      description: "Base YAML context management (existing kb-conduit)"
+      type: "script"
+      layer: 0
+
+      implementation:
+        path: "load-context.sh"
+        entrypoint: "main"
+
+      interface:
+        inputs:
+          - name: "context_file"
+            type: "filepath"
+            source: "env:KB_CONTEXT_FILE"
+            required: true
+
+        outputs:
+          - name: "workspace_context"
+            type: "context_snapshot"
+            exposed_as: "env:KB_WORKSPACE"
+
+          - name: "session_log"
+            type: "session_log"
+            exposed_as: "file:~/.kb-conduit/logs/session.log"
+
+      runtime:
+        environment:
+          KB_LOADED: "true"
+
+    # Layer 1: Interactive context loader (marimo)
+    - name: "context_loader_ui"
+      description: "Interactive marimo notebook for visualizing and editing contexts"
+      type: "marimo_notebook"
+      layer: 1
+
+      implementation:
+        path: "agents/context_loader.py"
+
+      dependencies:
+        - agent_name: "kb_base"
+          required: true
+          inputs:
+            workspace_context: "context_data"
+            session_log: "history"
+
+      interface:
+        inputs:
+          - name: "context_data"
+            type: "context_snapshot"
+            source: "agent:kb_base.workspace_context"
+            required: true
+
+          - name: "history"
+            type: "session_log"
+            source: "agent:kb_base.session_log"
+            required: false
+
+        outputs:
+          - name: "context_edits"
+            type: "context_snapshot"
+            exposed_as: "reactive_state"
+
+      runtime:
+        environment:
+          MARIMO_MODE: "edit"
+        resources:
+          memory: "256M"
+          cpu: "0.5"
+
+      lifecycle:
+        on_start: "marimo edit agents/context_loader.py"
+        health_check: "curl -f http://localhost:2718/health || exit 1"
+
+  data_flow:
+    - from: "kb_base"
+      to: "context_loader_ui"
+      data: "workspace_context"
+      transform: "yaml_to_dict"
+
+    - from: "kb_base"
+      to: "context_loader_ui"
+      data: "session_log"
+      transform: "parse_yaml_log"
+
+  policies:
+    auto_restart: false
+    cascade_stop: true
+    parallel_init: true
+
+deployment:
+  target: "local"
+  local:
+    workspace_path: "/home/user/kb-conduit"

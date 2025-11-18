@@ -1,0 +1,388 @@
+# Complex Multi-Layer Agent Stack Example
+# Four-layer architecture with multiple marimo agents
+
+schema_version: "1.0"
+
+stack:
+  name: "kb-conduit-full-stack"
+  version: "1.0.0"
+  description: "Full four-layer agent stack with context, debriefing, and concierge agents"
+
+  global:
+    base_path: "/home/user/kb-conduit"
+    environment:
+      KB_CONDUIT_ROOT: "~/.kb-conduit"
+      LOG_LEVEL: "info"
+      MARIMO_SERVER_PORT: "2718"
+    runtime: "python3.11"
+
+  agents:
+    # ==========================================================================
+    # LAYER 0: Base Infrastructure
+    # ==========================================================================
+
+    - name: "kb_base"
+      description: "Base YAML context management (existing kb-conduit)"
+      type: "script"
+      layer: 0
+
+      implementation:
+        path: "load-context.sh"
+
+      interface:
+        outputs:
+          - name: "workspace_context"
+            type: "context_snapshot"
+            exposed_as: "env:KB_WORKSPACE"
+
+          - name: "session_log"
+            type: "session_log"
+            exposed_as: "file:~/.kb-conduit/logs/session.log"
+
+      runtime:
+        environment:
+          KB_LOADED: "true"
+
+    # ==========================================================================
+    # LAYER 1: Context Management (Marimo)
+    # ==========================================================================
+
+    - name: "context_loader"
+      description: "Interactive context loader and editor"
+      type: "marimo_notebook"
+      layer: 1
+
+      implementation:
+        path: "agents/context_loader.py"
+        entrypoint: "load_context"
+
+      dependencies:
+        - agent_name: "kb_base"
+          required: true
+          inputs:
+            workspace_context: "raw_context"
+            session_log: "logs"
+
+      interface:
+        inputs:
+          - name: "raw_context"
+            type: "context_snapshot"
+            source: "agent:kb_base.workspace_context"
+            required: true
+
+        outputs:
+          - name: "validated_context"
+            type: "context_snapshot"
+            exposed_as: "reactive_cell:context"
+
+          - name: "context_metrics"
+            type: "metrics"
+            exposed_as: "reactive_cell:metrics"
+
+      runtime:
+        environment:
+          MARIMO_MODE: "run"
+          MARIMO_PORT: "2718"
+        resources:
+          memory: "512M"
+          cpu: "1.0"
+
+      lifecycle:
+        on_start: "marimo run agents/context_loader.py --port 2718"
+        health_check: "check_marimo_cell('context')"
+
+    - name: "context_validator"
+      description: "YAML schema validator and linter"
+      type: "marimo_notebook"
+      layer: 1
+
+      implementation:
+        path: "agents/validator.py"
+        entrypoint: "validate"
+
+      dependencies:
+        - agent_name: "context_loader"
+          required: false
+          inputs:
+            validated_context: "context_to_validate"
+
+      interface:
+        inputs:
+          - name: "context_to_validate"
+            type: "context_snapshot"
+            source: "agent:context_loader.validated_context"
+            required: true
+
+        outputs:
+          - name: "validation_report"
+            type: "report"
+            exposed_as: "reactive_cell:report"
+
+      runtime:
+        environment:
+          MARIMO_MODE: "run"
+          MARIMO_PORT: "2719"
+        resources:
+          memory: "256M"
+
+    # ==========================================================================
+    # LAYER 2: Session Analysis (Marimo)
+    # ==========================================================================
+
+    - name: "debriefing_agent"
+      description: "Analyzes session history and extracts insights"
+      type: "marimo_notebook"
+      layer: 2
+
+      implementation:
+        path: "agents/debriefer.py"
+        entrypoint: "analyze_sessions"
+
+      dependencies:
+        - agent_name: "kb_base"
+          required: true
+          inputs:
+            session_log: "session_history"
+
+        - agent_name: "context_loader"
+          required: true
+          inputs:
+            validated_context: "current_context"
+
+      interface:
+        inputs:
+          - name: "session_history"
+            type: "session_log"
+            source: "agent:kb_base.session_log"
+            required: true
+
+          - name: "current_context"
+            type: "context_snapshot"
+            source: "agent:context_loader.validated_context"
+            required: true
+
+        outputs:
+          - name: "session_insights"
+            type: "insights"
+            exposed_as: "reactive_cell:insights"
+
+          - name: "recommended_updates"
+            type: "context_diff"
+            exposed_as: "reactive_cell:recommendations"
+
+      config:
+        analysis_window: "7d"           # Analyze last 7 days
+        min_sessions: 3                  # Minimum sessions for insights
+        confidence_threshold: 0.75       # Insight confidence threshold
+
+      runtime:
+        environment:
+          MARIMO_MODE: "run"
+          MARIMO_PORT: "2720"
+        resources:
+          memory: "1G"
+          cpu: "1.5"
+
+      lifecycle:
+        on_start: "marimo run agents/debriefer.py --port 2720"
+        health_check: "check_marimo_cell('insights')"
+
+    - name: "pattern_detector"
+      description: "Detects patterns in cross-session behavior"
+      type: "marimo_notebook"
+      layer: 2
+
+      implementation:
+        path: "agents/pattern_detector.py"
+        entrypoint: "detect_patterns"
+
+      dependencies:
+        - agent_name: "debriefing_agent"
+          required: true
+          inputs:
+            session_insights: "insights"
+
+      interface:
+        inputs:
+          - name: "insights"
+            type: "insights"
+            source: "agent:debriefing_agent.session_insights"
+            required: true
+
+        outputs:
+          - name: "patterns"
+            type: "pattern_list"
+            exposed_as: "reactive_cell:patterns"
+
+      runtime:
+        environment:
+          MARIMO_MODE: "run"
+          MARIMO_PORT: "2721"
+        resources:
+          memory: "512M"
+
+    # ==========================================================================
+    # LAYER 3: Orchestration (Marimo)
+    # ==========================================================================
+
+    - name: "concierge_agent"
+      description: "Multi-workspace orchestration and coordination"
+      type: "marimo_notebook"
+      layer: 3
+
+      implementation:
+        path: "agents/concierge.py"
+        entrypoint: "orchestrate"
+
+      dependencies:
+        - agent_name: "context_loader"
+          required: true
+          inputs:
+            validated_context: "current_workspace"
+
+        - agent_name: "debriefing_agent"
+          required: true
+          inputs:
+            session_insights: "insights"
+            recommended_updates: "recommendations"
+
+        - agent_name: "pattern_detector"
+          required: true
+          inputs:
+            patterns: "detected_patterns"
+
+      interface:
+        inputs:
+          - name: "current_workspace"
+            type: "context_snapshot"
+            source: "agent:context_loader.validated_context"
+            required: true
+
+          - name: "insights"
+            type: "insights"
+            source: "agent:debriefing_agent.session_insights"
+            required: true
+
+          - name: "recommendations"
+            type: "context_diff"
+            source: "agent:debriefing_agent.recommended_updates"
+            required: true
+
+          - name: "detected_patterns"
+            type: "pattern_list"
+            source: "agent:pattern_detector.patterns"
+            required: false
+
+        outputs:
+          - name: "orchestration_plan"
+            type: "plan"
+            exposed_as: "reactive_cell:plan"
+
+          - name: "cross_workspace_insights"
+            type: "insights"
+            exposed_as: "reactive_cell:global_insights"
+
+          - name: "action_queue"
+            type: "action_list"
+            exposed_as: "reactive_cell:actions"
+
+      config:
+        workspace_scan_interval: "300s"  # Scan all workspaces every 5min
+        auto_apply_recommendations: false # Require human approval
+        max_concurrent_workspaces: 5     # Process up to 5 workspaces
+
+      runtime:
+        environment:
+          MARIMO_MODE: "edit"            # Interactive mode for oversight
+          MARIMO_PORT: "2722"
+        resources:
+          memory: "2G"
+          cpu: "2.0"
+        mounts:
+          - host_path: "~/.kb-conduit"
+            agent_path: "/kb-conduit"
+            read_only: false
+
+      lifecycle:
+        on_start: "marimo edit agents/concierge.py --port 2722"
+        on_stop: "save_orchestration_state"
+        health_check: "check_marimo_cell('plan')"
+
+  # ===========================================================================
+  # DATA FLOW GRAPH
+  # ===========================================================================
+
+  data_flow:
+    # Base → Layer 1
+    - from: "kb_base"
+      to: "context_loader"
+      data: "workspace_context"
+      transform: "yaml_to_dict"
+
+    - from: "kb_base"
+      to: "debriefing_agent"
+      data: "session_log"
+      transform: "parse_yaml_log"
+
+    # Layer 1 → Layer 1
+    - from: "context_loader"
+      to: "context_validator"
+      data: "validated_context"
+      transform: "deep_copy"
+
+    # Layer 1 → Layer 2
+    - from: "context_loader"
+      to: "debriefing_agent"
+      data: "validated_context"
+      transform: "extract_metadata"
+
+    # Layer 2 → Layer 2
+    - from: "debriefing_agent"
+      to: "pattern_detector"
+      data: "session_insights"
+      transform: "serialize_insights"
+
+    # Layer 2 → Layer 3
+    - from: "debriefing_agent"
+      to: "concierge_agent"
+      data: "session_insights"
+      transform: "aggregate_by_workspace"
+
+    - from: "pattern_detector"
+      to: "concierge_agent"
+      data: "patterns"
+      transform: "prioritize_patterns"
+
+    # Layer 1 → Layer 3
+    - from: "context_loader"
+      to: "concierge_agent"
+      data: "validated_context"
+      transform: "snapshot_workspace"
+
+  # ===========================================================================
+  # POLICIES
+  # ===========================================================================
+
+  policies:
+    auto_restart: true               # Restart failed agents
+    cascade_stop: true               # Stop dependents if dependency fails
+    parallel_init: true              # Init agents in parallel by layer
+    health_check_interval: "30s"    # Check health every 30 seconds
+    failure_threshold: 3             # Restart after 3 consecutive failures
+    backoff_strategy: "exponential"  # Exponential backoff on restarts
+
+# =============================================================================
+# DEPLOYMENT
+# =============================================================================
+
+deployment:
+  target: "local"
+
+  local:
+    workspace_path: "/home/user/kb-conduit"
+
+    # Optional: Generate systemd services
+    systemd:
+      enabled: true
+      services_path: "/etc/systemd/system"
+      user: "user"

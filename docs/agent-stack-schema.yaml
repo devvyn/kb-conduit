@@ -1,0 +1,143 @@
+# Agent Stack Infrastructure-as-Code Schema
+# For declarative marimo notebook-based agent orchestration
+
+schema_version: "1.0"
+
+# Core concept: Each agent is a marimo notebook that can be layered
+# Lower layers provide services to higher layers via reactive cells
+
+# =============================================================================
+# AGENT DEFINITION SCHEMA
+# =============================================================================
+
+agent:
+  # Unique identifier for this agent
+  name: string                    # e.g., "context_loader", "debriefing_agent"
+
+  # Human-readable description
+  description: string             # What this agent does
+
+  # Agent type determines execution model
+  type: enum                      # "marimo_notebook" | "script" | "service"
+
+  # Path to the agent implementation
+  implementation:
+    path: string                  # Relative path from stack root
+    entrypoint: string           # Optional: specific function/cell to invoke
+
+  # Layer in the stack (0 = base infrastructure, higher = more abstract)
+  layer: integer                  # Determines dependency ordering
+
+  # Dependencies on other agents (must be lower layers)
+  dependencies:
+    - agent_name: string          # References another agent.name
+      required: boolean           # Can stack function without it?
+      inputs: map                 # What data flows from dependency to this agent
+
+  # Configuration passed to the agent at runtime
+  config:
+    key: value                    # Arbitrary configuration map
+
+  # Input/output contract
+  interface:
+    inputs:
+      - name: string              # Input parameter name
+        type: string              # Data type
+        source: string            # Where it comes from (env, file, agent, etc.)
+        required: boolean
+
+    outputs:
+      - name: string              # What this agent produces
+        type: string              # Data type
+        exposed_as: string        # How other agents access it (env var, file, etc.)
+
+  # Runtime requirements
+  runtime:
+    environment: map              # Environment variables
+    mounts:                       # File system mounts
+      - host_path: string
+        agent_path: string
+        read_only: boolean
+    resources:                    # Resource constraints
+      memory: string              # e.g., "512M"
+      cpu: string                 # e.g., "0.5"
+
+  # Lifecycle hooks
+  lifecycle:
+    on_init: string               # Command/function to run on initialization
+    on_start: string              # Before processing
+    on_stop: string               # Cleanup
+    health_check: string          # How to verify agent is healthy
+
+# =============================================================================
+# STACK DEFINITION SCHEMA
+# =============================================================================
+
+stack:
+  # Stack metadata
+  name: string                    # e.g., "kb-conduit-agent-stack"
+  version: string                 # Semantic version
+  description: string
+
+  # Global configuration inherited by all agents
+  global:
+    environment: map              # Shared env vars
+    base_path: string             # Root directory for agent paths
+    runtime: string               # Default runtime (python, marimo, etc.)
+
+  # Ordered list of agents (can be auto-sorted by layer)
+  agents:
+    - agent                       # List of agent definitions (see above)
+
+  # Data flow between layers
+  data_flow:
+    - from: string                # Source agent
+      to: string                  # Destination agent
+      data: string                # What data flows
+      transform: string           # Optional: transformation function
+
+  # Stack-level policies
+  policies:
+    auto_restart: boolean         # Restart failed agents?
+    cascade_stop: boolean         # Stop dependent agents if dependency fails?
+    parallel_init: boolean        # Initialize agents in parallel where possible?
+
+# =============================================================================
+# DEPLOYMENT SCHEMA
+# =============================================================================
+
+deployment:
+  target: enum                    # "local" | "docker" | "kubernetes" | "cloud"
+
+  # Target-specific configuration
+  local:
+    workspace_path: string        # Where to run the stack
+
+  docker:
+    compose_file: string          # Generated docker-compose.yaml path
+    network: string               # Docker network name
+
+  kubernetes:
+    namespace: string
+    manifests_path: string        # Where to generate K8s manifests
+
+# =============================================================================
+# EXAMPLE TYPE DEFINITIONS
+# =============================================================================
+
+# Common data types that flow between agents
+data_types:
+  context_snapshot:
+    workspace: string
+    contexts: list
+    people: list
+    policies: list
+    timestamp: datetime
+
+  session_log:
+    entries: list
+    format: "yaml"
+
+  agent_state:
+    status: enum                  # "initializing" | "ready" | "processing" | "error"
+    metadata: map
