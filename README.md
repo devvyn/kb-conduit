@@ -1,8 +1,10 @@
 # KB Conduit
 
-**Context management for Claude Code across multiple workspaces**
+**Workspace context management for Claude Code**
 
 Stop copy/pasting context between work and personal projects. Define workspace context once, agent loads it automatically.
+
+> **Note**: This is NOT a knowledge base for documents or general information. It's a workspace context manager that remembers "who you are" and "where you are" across different projects.
 
 ---
 
@@ -49,6 +51,27 @@ cd ~/work-project
 - Mention "herbarium" → agent references work context
 - Mention "personal project" → agent references home context
 - No copy/paste, no re-explaining
+
+---
+
+## What This Is (And Isn't)
+
+### ❌ This is NOT:
+- A knowledge base for documents or FAQs
+- A general information storage system
+- A semantic search tool
+- A RAG (Retrieval-Augmented Generation) system
+
+### ✅ This IS:
+- A **workspace context manager**
+- A tool that remembers "who you are" and "where you are" per project
+- A system to avoid re-explaining your work situation each session
+- A clue-based context switcher
+
+### What "KB" Means Here:
+"KB" in KB Conduit refers to **"contextual knowledge about your workspace"** (people, policies, focus areas), not a traditional knowledge base of documents or general information. Think of it as "workspace awareness" rather than "knowledge storage."
+
+The name can be misleading—this tool is better described as a **workspace context conduit** that helps AI agents understand which workspace you're in.
 
 ---
 
@@ -441,6 +464,9 @@ MIT License - See `LICENSE` file
 ---
 
 ## FAQ
+
+**Q: Why is it called "KB Conduit" if it's not a knowledge base?**
+A: Valid question! "KB" here means "contextual knowledge about your workspace" (people, roles, policies), not a traditional knowledge base of documents. The name can be misleading—think of it as a "workspace context conduit" that helps AI understand which workspace you're in. The project prioritized shipping a working solution over perfecting the branding.
 
 **Q: Does this work with other AI coding tools?**
 A: Currently designed for Claude Code. Concept could adapt to other tools with context awareness.
